@@ -1,4 +1,4 @@
-package memory
+package tagQueryExpression
 
 import (
 	"regexp"
@@ -14,17 +14,17 @@ type expressionMatch struct {
 	valueRe *regexp.Regexp
 }
 
-func (e *expressionMatch) getFilter() tagFilter {
+func (e *expressionMatch) GetMetricDefinitionFilter() MetricDefinitionFilter {
 	if e.key == "name" {
 		if e.value == "" {
 			// silly query, always fails
-			return func(def *idx.Archive) filterDecision { return fail }
+			return func(def *idx.Archive) FilterDecision { return Fail }
 		}
-		return func(def *idx.Archive) filterDecision {
+		return func(def *idx.Archive) FilterDecision {
 			if e.valueRe.MatchString(def.Name) {
-				return pass
+				return Pass
 			} else {
-				return fail
+				return Fail
 			}
 		}
 	}
@@ -33,7 +33,7 @@ func (e *expressionMatch) getFilter() tagFilter {
 	var currentMatchCacheSize, currentMissCacheSize int32
 	prefix := e.key + "="
 
-	return func(def *idx.Archive) filterDecision {
+	return func(def *idx.Archive) FilterDecision {
 		for _, tag := range def.Tags {
 			if !strings.HasPrefix(tag, prefix) {
 				continue
@@ -41,19 +41,19 @@ func (e *expressionMatch) getFilter() tagFilter {
 
 			// if value is empty, every metric which has this tag fails
 			if e.value == "" {
-				return fail
+				return Fail
 			}
 
 			value := tag[len(prefix):]
 
 			// reduce regex matching by looking up cached non-matches
 			if _, ok := missCache.Load(value); ok {
-				return fail
+				return Fail
 			}
 
 			// reduce regex matching by looking up cached matches
 			if _, ok := matchCache.Load(value); ok {
-				return pass
+				return Pass
 			}
 
 			if e.valueRe.MatchString(value) {
@@ -61,65 +61,40 @@ func (e *expressionMatch) getFilter() tagFilter {
 					matchCache.Store(value, struct{}{})
 					atomic.AddInt32(&currentMatchCacheSize, 1)
 				}
-				return pass
+				return Pass
 			} else {
 				if atomic.LoadInt32(&currentMissCacheSize) < int32(matchCacheSize) {
 					missCache.Store(value, struct{}{})
 					atomic.AddInt32(&currentMissCacheSize, 1)
 				}
-				return fail
+				return Fail
 			}
 		}
 
-		return none
+		return None
 	}
 }
 
-func (e *expressionMatch) hasRe() bool {
+func (e *expressionMatch) HasRe() bool {
 	return true
 }
 
-func (e *expressionMatch) getMatcher() tagStringMatcher {
+func (e *expressionMatch) GetMatcher() TagStringMatcher {
 	return func(checkValue string) bool {
 		return e.valueRe.MatchString(checkValue)
 	}
 }
 
-func (e *expressionMatch) matchesTag() bool {
+func (e *expressionMatch) MatchesTag() bool {
 	return false
 }
 
-func (e *expressionMatch) getDefaultDecision() filterDecision {
-	return fail
+func (e *expressionMatch) GetDefaultDecision() FilterDecision {
+	return Fail
 }
 
-func (e *expressionMatch) stringIntoBuilder(builder *strings.Builder) {
+func (e *expressionMatch) StringIntoBuilder(builder *strings.Builder) {
 	builder.WriteString(e.key)
 	builder.WriteString("=~")
 	builder.WriteString(e.value)
-}
-
-func (e *expressionMatch) getMetaRecords(mti metaTagIndex) []uint32 {
-	idSet := make(map[uint32]struct{})
-	match := e.getMatcher()
-	if values, ok := mti[e.key]; ok {
-		for value, ids := range values {
-			if !match(value) {
-				continue
-			}
-			for _, id := range ids {
-				idSet[id] = struct{}{}
-			}
-		}
-	}
-
-	res := make([]uint32, 0, len(idSet))
-	for id := range idSet {
-		res = append(res, id)
-	}
-	return res
-}
-
-func (e *expressionMatch) getMetaRecordFilter(evaluators []metaRecordEvaluator) tagFilter {
-	return e.expressionCommon.getMetaRecordFilterWithDecision(evaluators, pass)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/raintank/schema"
 
 	"github.com/grafana/metrictank/idx"
+	"github.com/grafana/metrictank/idx/memory/tagQueryExpression"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -39,11 +40,23 @@ func (k *kv) stringIntoBuilder(builder *strings.Builder) {
 }
 
 type filter struct {
-	expr            expression
-	test            tagFilter
-	testMetaRecords []metaRecordFilter
-	defaultDecision filterDecision
-	meta            bool
+	// expr is the expression based on which this filter has been generated
+	expr tagQueryExpression.Expression
+
+	// test is a filter function which takes a MetricDefinition and returns a
+	// tagQueryExpression.FilterDecision type indicating whether the MD
+	// satisfies this expression or not
+	test tagQueryExpression.MetricDefinitionFilter
+
+	// testByMetaTags is a filter function which has been generated from the
+	// meta records that match this filter's expression. It accepts a set of
+	// tags and returns true if the given set of tags should pass this filter
+	// due to matching meta records, otherwise false
+	testByMetaTags func(map[string]string) bool
+
+	// indicates whether the meta tag index should be taken into account for
+	// this filter
+	meta bool
 }
 
 // TagQuery runs a set of pattern or string matches on tag keys and values against
@@ -55,10 +68,10 @@ type TagQuery struct {
 	from    int64
 	filters []filter
 
-	metricExpressions        []expression
-	mixedExpressions         []expression
-	tagQuery                 expression
-	initialExpression        expression
+	metricExpressions        []tagQueryExpression.Expression
+	mixedExpressions         []tagQueryExpression.Expression
+	tagQuery                 tagQueryExpression.Expression
+	initialExpression        tagQueryExpression.Expression
 	initialExpressionUseMeta bool
 
 	index       TagIndex                     // the tag index, hierarchy of tags & values, set by Run()/RunGetTags()
@@ -66,6 +79,12 @@ type TagQuery struct {
 	metaIndex   metaTagIndex
 	metaRecords metaTagRecords
 
+	// indicates whether this query is a subQuery or not
+	// f.e. if it has been created to evaluate the query expressions attached to
+	//  a meta record which has been matched by the original query, then it's
+	// considered a sub-query.
+	// sub queries should never take the meta tag index into account
+	// to prevent loops.
 	subQuery bool
 }
 
@@ -83,7 +102,7 @@ func tagMapFromStrings(tags []string) (map[string]string, error) {
 	return res, err
 }
 
-func tagQueryFromExpressions(expressions []expression, from int64, subQuery bool) (*TagQuery, error) {
+func tagQueryFromExpressions(expressions []tagQueryExpression.Expression, from int64, subQuery bool) (*TagQuery, error) {
 	q := TagQuery{from: from, subQuery: subQuery}
 
 	// every set of expressions must have at least one positive operator (=, =~, ^=, <tag>!=<empty>, __tag^=, __tag=~)
@@ -93,11 +112,11 @@ func tagQueryFromExpressions(expressions []expression, from int64, subQuery bool
 	foundTagQuery := false
 	for _, e := range expressions {
 
-		if !foundPositiveOperator && e.isPositiveOperator() {
+		if !foundPositiveOperator && e.IsPositiveOperator() {
 			foundPositiveOperator = true
 		}
 
-		if e.isTagQueryOperator() {
+		if e.IsTagOperator() {
 			if foundTagQuery {
 				return nil, errInvalidQuery
 			}
@@ -123,7 +142,7 @@ func NewTagQuery(expressions []string, from int64) (*TagQuery, error) {
 		return nil, errInvalidQuery
 	}
 
-	parsed := make([]expression, 0, len(expressions))
+	parsed := make([]tagQueryExpression.Expression, 0, len(expressions))
 	sort.Strings(expressions)
 	for i, expr := range expressions {
 		// skip duplicate expression
@@ -131,7 +150,7 @@ func NewTagQuery(expressions []string, from int64) (*TagQuery, error) {
 			continue
 		}
 
-		e, err := parseExpression(expr)
+		e, err := tagQueryExpression.ParseExpression(expr)
 		if err != nil {
 			return nil, err
 		}
@@ -208,7 +227,7 @@ func (q *TagQuery) initForIndex(defById map[schema.MKey]*idx.Archive, idx TagInd
 // subQueryFromExpressions is used to evaluate a meta tag. when a meta tag needs to
 // be evaluated we take its associated query expressions and instantiate a sub-query
 // from them
-func (q *TagQuery) subQueryFromExpressions(expressions []expression) (*TagQuery, error) {
+func (q *TagQuery) subQueryFromExpressions(expressions []tagQueryExpression.Expression) (*TagQuery, error) {
 	query, err := tagQueryFromExpressions(expressions, q.from, true)
 	if err != nil {
 		// this means we've stored a meta record containing invalid queries
@@ -227,7 +246,7 @@ func (q *TagQuery) getInitialIds(wg *sync.WaitGroup, idCh chan schema.MKey) chan
 	stopCh := make(chan struct{})
 	wg.Add(1)
 
-	if q.initialExpression.matchesTag() {
+	if q.initialExpression.MatchesTag() {
 		go q.getInitialByTag(wg, idCh, stopCh)
 	} else {
 		go q.getInitialByTagValue(wg, idCh, stopCh)
@@ -240,8 +259,8 @@ func (q *TagQuery) getInitialIds(wg *sync.WaitGroup, idCh chan schema.MKey) chan
 // it only handles those expressions which involve matching a tag value:
 // f.e. key=value but not key!=
 func (q *TagQuery) getInitialByTagValue(wg *sync.WaitGroup, idCh chan schema.MKey, stopCh chan struct{}) {
-	key := q.initialExpression.getKey()
-	match := q.initialExpression.getMatcher()
+	key := q.initialExpression.GetKey()
+	match := q.initialExpression.GetMatcher()
 	initialIdsWg := sync.WaitGroup{}
 	initialIdsWg.Add(1)
 
@@ -266,6 +285,7 @@ func (q *TagQuery) getInitialByTagValue(wg *sync.WaitGroup, idCh chan schema.MKe
 	// sortByCost() will usually try to not choose an expression that involves
 	// meta tags as the initial expression, but if necessary we need to
 	// evaluate those too
+	// if this is a sub query we want to ignore the meta index to prevent loops
 	if !q.subQuery && q.initialExpressionUseMeta {
 		for v, records := range q.metaIndex[key] {
 			if !match(v) {
@@ -308,7 +328,7 @@ func (q *TagQuery) getInitialByTagValue(wg *sync.WaitGroup, idCh chan schema.MKe
 // it only handles those expressions which do not involve matching a tag value:
 // f.e. key!= but not key=value
 func (q *TagQuery) getInitialByTag(wg *sync.WaitGroup, idCh chan schema.MKey, stopCh chan struct{}) {
-	match := q.initialExpression.getMatcher()
+	match := q.initialExpression.GetMatcher()
 	initialIdsWg := sync.WaitGroup{}
 	initialIdsWg.Add(1)
 
@@ -335,6 +355,7 @@ func (q *TagQuery) getInitialByTag(wg *sync.WaitGroup, idCh chan schema.MKey, st
 	// sortByCost() will usually try to not choose an expression that involves
 	// meta tags as the initial expression, but if necessary we need to
 	// evaluate those too
+	// if this is a sub query we want to ignore the meta index to prevent loops
 	if !q.subQuery && q.initialExpressionUseMeta {
 		for tag, values := range q.metaIndex {
 			if !match(tag) {
@@ -384,53 +405,35 @@ func (q *TagQuery) testByAllExpressions(id schema.MKey, def *idx.Archive, omitTa
 		return false
 	}
 
-	var res filterDecision
-	var recordIds []uint32
-	var records []metaTagRecord
-	var evaluators []metaRecordEvaluator
+	var res tagQueryExpression.FilterDecision
 	for _, filter := range q.filters {
-		if res = filter.test(def); res == pass {
+		res = filter.test(def)
+		if res == tagQueryExpression.Pass {
 			continue
 		}
-		if res == fail {
+		if res == tagQueryExpression.Fail {
 			return false
 		}
 
+		// if the meta tag index should not be taken into account for this
+		// filter we decide based on the expression's default decision
+		if !filter.meta {
+			if filter.expr.GetDefaultDecision() == tagQueryExpression.Pass {
+				continue
+			}
+			return false
+		}
+
+		// if no decision has been made based on the metric tag index, then we
+		// evaluate via the meta tag index
 		tags, err := tagMapFromStrings(def.Tags)
 		if err != nil {
 			corruptIndex.Inc()
 			return false
 		}
+		tags["name"] = def.Name
 
-		// check if any of the meta records that match this filter
-		// would get added to the set of tags of this metric
-		for _, metaRecordFilter := range filter.testMetaRecords {
-			if metaRecordFilter(tags) {
-				return true
-			}
-		}
-		return false
-
-		recordIds = filter.expr.getMetaRecords(q.metaIndex)
-		records = q.metaRecords.getRecords(recordIds)
-		if len(records) < len(recordIds) {
-			corruptIndex.Inc()
-			return false
-		}
-		evaluators = evaluators[:0]
-		for _, record := range records {
-			evaluators = append(evaluators, record.getEvaluator())
-		}
-
-		res = filter.expr.getMetaRecordFilter(evaluators)(def)
-		if res == pass {
-			continue
-		}
-		if res == fail {
-			return false
-		}
-
-		if filter.defaultDecision != pass {
+		if !filter.testByMetaTags(tags) {
 			return false
 		}
 	}
@@ -477,111 +480,134 @@ func (q *TagQuery) prepareFilters() {
 		q.filters = make([]filter, len(q.metricExpressions)+len(q.mixedExpressions))
 	}
 
-	var metaRecords []metaTagRecord
 	i := 0
 	for _, expr := range q.metricExpressions {
 		q.filters[i] = filter{
-			expr:            expr,
-			test:            expr.getFilter(),
-			defaultDecision: expr.getDefaultDecision(),
-			meta:            false,
+			expr: expr,
+			test: expr.GetMetricDefinitionFilter(),
+			meta: false,
 		}
 		i++
 	}
 	for _, expr := range q.mixedExpressions {
-		f := filter{
-			expr:            expr,
-			test:            expr.getFilter(),
-			defaultDecision: expr.getDefaultDecision(),
-			meta:            true,
+		q.filters[i] = filter{
+			expr:           expr,
+			test:           expr.GetMetricDefinitionFilter(),
+			testByMetaTags: q.getMetaTagFilter(expr),
+			meta:           true,
 		}
-		metaRecords = q.metaRecords.getRecords(expr.getMetaRecords(q.metaIndex))
-		for _, record := range metaRecords {
-			f.testMetaRecords = append(f.testMetaRecords, record.filterByTags)
-		}
-		q.filters[i] = f
 		i++
 	}
 	if appendTagQuery {
-		f := filter{
-			expr:            q.tagQuery,
-			test:            q.tagQuery.getFilter(),
-			defaultDecision: q.tagQuery.getDefaultDecision(),
-			meta:            true,
+		q.filters[i] = filter{
+			expr:           q.tagQuery,
+			test:           q.tagQuery.GetMetricDefinitionFilter(),
+			testByMetaTags: q.getMetaTagFilter(q.tagQuery),
+			meta:           true,
 		}
-		metaRecords = q.metaRecords.getRecords(q.tagQuery.getMetaRecords(q.metaIndex))
-		for _, record := range metaRecords {
-			f.testMetaRecords = append(f.testMetaRecords, record.filterByTags)
+	}
+}
+
+// getMetaTagFilter returns a filter function to which a set of tags/values can
+// be passed, the filter function is based on the given expression.
+// The filter function returns true if the tags/values pass the filter according
+// to the meta tag index or false if they don't.
+func (q *TagQuery) getMetaTagFilter(expression tagQueryExpression.Expression) func(map[string]string) bool {
+	metaRecordIds := q.metaIndex.getMetaRecordIdsByExpression(expression)
+	metaTagRecords := q.metaRecords.getRecords(metaRecordIds)
+
+	// in case of positive expression operators, we want to return true if
+	// any meta tag record matches the given tag set
+	// otherwise, in case of negative ones, we want to return false on match
+	resultOnMatch := expression.IsPositiveOperator()
+
+	return func(tags map[string]string) bool {
+		for _, record := range metaTagRecords {
+			if record.matchesTags(tags) {
+				return resultOnMatch
+			}
 		}
-		q.filters[i] = f
+		return !resultOnMatch
 	}
 }
 
 func (q *TagQuery) sortByCostWithMeta() {
-	var mixedExpressions []expression
-	var metricExpressions []expression
-	for _, e := range q.mixedExpressions {
-		op := e.getOperator()
-
-		// match tag and prefix tag operator expressions always take the meta index
-		// into account, unless using the meta index is disabled for this query
-		if op == opMatchTag || op == opPrefixTag || op == opHasTag {
+	for i, e := range q.mixedExpressions {
+		if e.IsTagOperator() {
+			// there can only be one expression using a tag operator per query
 			q.tagQuery = e
-		} else {
-			if _, ok := q.metaIndex[e.getKey()]; ok {
-				mixedExpressions = append(mixedExpressions, e)
-			} else {
-				metricExpressions = append(metricExpressions, e)
-			}
+
+			q.mixedExpressions = append(q.mixedExpressions[:i], q.mixedExpressions[i+1:]...)
+			continue
+		}
+
+		// separate all the ones that don't involve the meta index into their
+		// own slice, because they should be executed first
+		if _, ok := q.metaIndex[e.GetKey()]; !ok {
+			q.metricExpressions = append(q.metricExpressions, e)
+			q.mixedExpressions = append(q.mixedExpressions[:i], q.mixedExpressions[i+1:]...)
 		}
 	}
 
-	getCostMultiplier := func(expr expression) int {
-		if expr.hasRe() {
-			return 10
+	sort.Slice(q.metricExpressions, func(i, j int) bool {
+		costI := len(q.index[q.metricExpressions[i].GetKey()])
+		if q.metricExpressions[i].HasRe() {
+			costI *= 10
 		}
-		return 1
-	}
 
-	sort.Slice(metricExpressions, func(i, j int) bool {
-		return len(q.index[metricExpressions[i].getKey()])*getCostMultiplier(metricExpressions[i]) < len(q.index[metricExpressions[j].getKey()])*getCostMultiplier(metricExpressions[j])
+		costJ := len(q.index[q.metricExpressions[j].GetKey()])
+		if q.metricExpressions[j].HasRe() {
+			costJ *= 10
+		}
+
+		return costI < costJ
 	})
 
-	sort.Slice(mixedExpressions, func(i, j int) bool {
-		return ((len(q.index[mixedExpressions[i].getKey()]) + len(q.metaIndex[mixedExpressions[i].getKey()])) * getCostMultiplier(mixedExpressions[i])) < ((len(q.index[mixedExpressions[j].getKey()]) + len(q.metaIndex[mixedExpressions[j].getKey()])) * getCostMultiplier(mixedExpressions[j]))
-	})
+	sort.Slice(q.mixedExpressions, func(i, j int) bool {
+		keyI := q.mixedExpressions[i].GetKey()
+		costI := len(q.index[keyI])
+		costI += len(q.metaIndex[keyI])
+		if q.metricExpressions[i].HasRe() {
+			costI *= 10
+		}
 
-	q.metricExpressions = metricExpressions
-	q.mixedExpressions = mixedExpressions
+		keyJ := q.mixedExpressions[j].GetKey()
+		costJ := len(q.index[keyJ])
+		costJ += len(q.metaIndex[keyJ])
+		if q.mixedExpressions[j].HasRe() {
+			costJ *= 10
+		}
+
+		return costI < costJ
+	})
 }
 
 func (q *TagQuery) sortByCostWithoutMeta() {
 	q.metricExpressions = append(q.metricExpressions, q.mixedExpressions...)
-	q.mixedExpressions = []expression{}
+	q.mixedExpressions = nil
 
 	// extract tag query if there is one
 	for i, e := range q.metricExpressions {
-		op := e.getOperator()
-
-		if op == opMatchTag || op == opPrefixTag || op == opHasTag {
+		if e.IsTagOperator() {
+			// there can only be one expression using a tag operator per query
 			q.tagQuery = e
 			q.metricExpressions = append(q.metricExpressions[:i], q.metricExpressions[i+1:]...)
-
-			// there should never be more than one tag operator
-			break
+			continue
 		}
-	}
-
-	// We assume that any operation involving a regular expressions is 10 times more expensive than = / !=
-	getCostMultiplier := func(expr expression) int {
-		if expr.hasRe() {
-			return 10
-		}
-		return 1
 	}
 
 	sort.Slice(q.metricExpressions, func(i, j int) bool {
-		return len(q.index[q.metricExpressions[i].getKey()])*getCostMultiplier(q.metricExpressions[i]) < len(q.index[q.metricExpressions[j].getKey()])*getCostMultiplier(q.metricExpressions[j])
+		costI := len(q.index[q.metricExpressions[i].GetKey()])
+		if q.metricExpressions[i].HasRe() {
+			costI *= 10
+		}
+
+		costJ := len(q.index[q.metricExpressions[j].GetKey()])
+		if q.metricExpressions[j].HasRe() {
+			costJ *= 10
+		}
+
+		return costI < costJ
 	})
 }
 
@@ -594,14 +620,14 @@ func (q *TagQuery) sortByCost() {
 	}
 
 	for i, expr := range q.metricExpressions {
-		if expr.isPositiveOperator() {
+		if expr.IsPositiveOperator() {
 			q.initialExpression = q.metricExpressions[i]
 			q.metricExpressions = append(q.metricExpressions[:i], q.metricExpressions[i+1:]...)
 			return
 		}
 	}
 	for i, expr := range q.mixedExpressions {
-		if expr.isPositiveOperator() {
+		if expr.IsPositiveOperator() {
 			q.initialExpression = q.mixedExpressions[i]
 			q.mixedExpressions = append(q.mixedExpressions[:i], q.mixedExpressions[i+1:]...)
 			q.initialExpressionUseMeta = true
@@ -618,24 +644,12 @@ func (q *TagQuery) sortByCost() {
 func (q *TagQuery) getMaxTagCount(wg *sync.WaitGroup) int {
 	defer wg.Done()
 	var maxTagCount int
-	op := q.tagQuery.getOperator()
-	match := q.tagQuery.getMatcher()
+	match := q.tagQuery.GetMatcher()
 
-	if op == opPrefixTag {
-		for tag := range q.index {
-			if !match(tag) {
-				continue
-			}
+	for tag := range q.index {
+		if match(tag) {
 			maxTagCount++
 		}
-	} else if op == opMatchTag {
-		for tag := range q.index {
-			if match(tag) {
-				maxTagCount++
-			}
-		}
-	} else {
-		maxTagCount = len(q.index)
 	}
 
 	return maxTagCount
@@ -652,9 +666,9 @@ func (q *TagQuery) filterTagsFromChan(wg *sync.WaitGroup, idCh chan schema.MKey,
 	// the chan twice
 	resultsCache := make(map[string]struct{})
 
-	var match func(string) bool
+	var match tagQueryExpression.TagStringMatcher
 	if q.tagQuery != nil {
-		match = q.tagQuery.getMatcher()
+		match = q.tagQuery.GetMatcher()
 	}
 
 IDS:
@@ -734,23 +748,6 @@ IDS:
 	}
 }
 
-// determines whether the given tag prefix/tag match will match the special
-// tag "name". if it does, then we can omit some filtering because we know
-// that every metric has a name
-func (q *TagQuery) tagFilterMatchesName() bool {
-	matchName := false
-	op := q.tagQuery.getOperator()
-
-	if op == opPrefixTag || op == opMatchTag {
-		match := q.tagQuery.getMatcher()
-		if match("name") {
-			matchName = true
-		}
-	}
-
-	return matchName
-}
-
 // RunGetTags executes the tag query and returns all the tags of the
 // resulting metrics
 func (q *TagQuery) RunGetTags() map[string]struct{} {
@@ -771,7 +768,7 @@ func (q *TagQuery) RunGetTags() map[string]struct{} {
 		// we know there can only be 1 tag filter, so if we detect that the given
 		// tag condition matches the special tag "name", we can omit the filtering
 		// because every metric has a name.
-		matchName = q.tagFilterMatchesName()
+		matchName = q.tagQuery.GetMatcher()("name")
 	}
 
 	prepareFiltersWg := sync.WaitGroup{}
