@@ -2,6 +2,7 @@ package memory
 
 import (
 	"hash"
+	"reflect"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -22,25 +23,35 @@ func TestInsertSimpleMetaTagRecord(t *testing.T) {
 
 		Convey("then it should exist in the meta tag records object", func() {
 			So(len(metaTagRecords), ShouldEqual, 1)
-
-			// we know there should only be one record, so we get it like this
-			var record metaTagRecord
-			for _, record = range metaTagRecords {
-			}
+			record, ok := metaTagRecords[record.hashQueries()]
+			So(ok, ShouldBeTrue)
 
 			So(len(record.metaTags), ShouldEqual, 2)
 			So(len(record.queries), ShouldEqual, 2)
 
-			So(record.metaTags[1].key, ShouldEqual, "anotherTag")
-			So(record.metaTags[1].value, ShouldEqual, "theValue")
-			So(record.metaTags[0].key, ShouldEqual, "metaTag1")
-			So(record.metaTags[0].value, ShouldEqual, "abc")
-			So(record.queries[0].getKey(), ShouldEqual, "match")
-			So(record.queries[0].getValue(), ShouldEqual, "^(?:this)")
-			So(record.queries[0].getOperator(), ShouldEqual, opMatch)
-			So(record.queries[1].getKey(), ShouldEqual, "metricTag")
-			So(record.queries[1].getValue(), ShouldEqual, "a")
-			So(record.queries[1].getOperator(), ShouldEqual, opNotEqual)
+			var seenMetaTag1, seenMetaTag2 bool
+			for _, metaTag := range record.metaTags {
+				if reflect.DeepEqual(metaTag, kv{key: "metaTag1", value: "abc"}) {
+					seenMetaTag1 = true
+				}
+				if reflect.DeepEqual(metaTag, kv{key: "anotherTag", value: "theValue"}) {
+					seenMetaTag2 = true
+				}
+			}
+			So(seenMetaTag1, ShouldBeTrue)
+			So(seenMetaTag2, ShouldBeTrue)
+
+			var seenQuery1, seenQuery2 bool
+			for _, query := range record.queries {
+				if reflect.DeepEqual(query, expression{kv: kv{key: "metricTag", value: "a"}, operator: NOT_EQUAL}) {
+					seenQuery1 = true
+				}
+				if reflect.DeepEqual(query, expression{kv: kv{key: "match", value: "this"}, operator: MATCH}) {
+					seenQuery2 = true
+				}
+			}
+			So(seenQuery1, ShouldBeTrue)
+			So(seenQuery2, ShouldBeTrue)
 		})
 	})
 }
@@ -77,78 +88,75 @@ func TestUpdateExistingMetaTagRecord(t *testing.T) {
 
 			// the order of the records may have changed due to sorting by hash
 			var record1, record2 metaTagRecord
+			var found1, found2 bool
+			var recordIdToUpdate uint32
 			for hash, record := range metaTagRecords {
 				So(len(record.queries), ShouldEqual, 2)
-				switch record.queries[0].getValue() {
-				case "^(?:a)":
+				switch record.queries[0].value {
+				case "a":
 					record1 = metaTagRecords[hash]
-				case "^(?:c)":
+					found1 = true
+					recordIdToUpdate = hash
+				case "c":
 					record2 = metaTagRecords[hash]
+					found2 = true
 				}
 			}
 
-			// verify that we got valid records
-			So(len(record1.queries), ShouldNotEqual, 0)
-			So(len(record2.queries), ShouldNotEqual, 0)
+			// verify that we found both records
+			So(found1 && found2, ShouldBeTrue)
 
-			// verify that all the values are as expected
-			So(record1.metaTags[0].key, ShouldEqual, "metaTag1")
-			So(record1.metaTags[0].value, ShouldEqual, "value1")
-			So(record1.queries[0].getKey(), ShouldEqual, "tag1")
-			So(record1.queries[0].getValue(), ShouldEqual, "^(?:a)")
-			So(record1.queries[1].getKey(), ShouldEqual, "tag2")
-			So(record1.queries[1].getValue(), ShouldEqual, "^(?:b)")
-			So(record2.metaTags[0].key, ShouldEqual, "metaTag1")
-			So(record2.metaTags[0].value, ShouldEqual, "value1")
-			So(record2.queries[0].getKey(), ShouldEqual, "tag1")
-			So(record2.queries[0].getValue(), ShouldEqual, "^(?:c)")
-			So(record2.queries[1].getKey(), ShouldEqual, "tag2")
-			So(record2.queries[1].getValue(), ShouldEqual, "^(?:d)")
+			So(record1.metaTags[0], ShouldResemble, kv{key: "metaTag1", value: "value1"})
+			So(record1.queries[0], ShouldResemble, expression{kv: kv{key: "tag1", value: "a"}, operator: MATCH})
+			So(record1.queries[1], ShouldResemble, expression{kv: kv{key: "tag2", value: "b"}, operator: MATCH})
 
-			Convey("then we update one of the records", func() {
+			So(record2.metaTags[0], ShouldResemble, kv{key: "metaTag1", value: "value1"})
+			So(record2.queries[0], ShouldResemble, expression{kv: kv{key: "tag1", value: "c"}, operator: MATCH})
+			So(record2.queries[1], ShouldResemble, expression{kv: kv{key: "tag2", value: "d"}, operator: MATCH})
+
+			Convey("when we then update one of the records", func() {
 				hash, record, oldHash, oldRecord, err := metaTagRecords.upsert(metaTagsUpdate, tagQueriesUpdate)
 				So(err, ShouldBeNil)
 				So(record, ShouldNotBeNil)
-				So(oldHash, ShouldEqual, hash)
+				So(recordIdToUpdate, ShouldEqual, hash)
+				So(hash, ShouldEqual, oldHash)
 				So(oldRecord, ShouldNotBeNil)
 
 				Convey("then we should be able to see one old and one updated record", func() {
 					So(len(metaTagRecords), ShouldEqual, 2)
 
 					// the order of the records may have changed again due to sorting by hash
+					var found1, found2 bool
 					for hash, record := range metaTagRecords {
 						So(len(record.queries), ShouldEqual, 2)
-						switch record.queries[0].getValue() {
-						case "^(?:a)":
+						switch record.queries[0].value {
+						case "a":
 							record1 = metaTagRecords[hash]
-						case "^(?:c)":
+							found1 = true
+						case "c":
 							record2 = metaTagRecords[hash]
+							found2 = true
 						}
 					}
 
-					// verify that we got valid records
-					So(len(record1.queries), ShouldNotEqual, 0)
-					So(len(record2.queries), ShouldNotEqual, 0)
+					// verify that we found both records
+					So(found1 && found2, ShouldBeTrue)
 
-					// verify that all the values are as expected
-					So(record1.metaTags[0].key, ShouldEqual, "metaTag1")
-					So(record1.metaTags[0].value, ShouldEqual, "value2")
-					So(record1.queries[0].getKey(), ShouldEqual, "tag1")
-					So(record1.queries[0].getValue(), ShouldEqual, "^(?:a)")
-					So(record1.queries[1].getKey(), ShouldEqual, "tag2")
-					So(record1.queries[1].getValue(), ShouldEqual, "^(?:b)")
-					So(record2.metaTags[0].key, ShouldEqual, "metaTag1")
-					So(record2.metaTags[0].value, ShouldEqual, "value1")
-					So(record2.queries[0].getKey(), ShouldEqual, "tag1")
-					So(record2.queries[0].getValue(), ShouldEqual, "^(?:c)")
-					So(record2.queries[1].getKey(), ShouldEqual, "tag2")
-					So(record2.queries[1].getValue(), ShouldEqual, "^(?:d)")
+					So(record1.metaTags[0], ShouldResemble, kv{key: "metaTag1", value: "value2"})
+					So(record1.queries[0], ShouldResemble, expression{kv: kv{key: "tag1", value: "a"}, operator: MATCH})
+					So(record1.queries[1], ShouldResemble, expression{kv: kv{key: "tag2", value: "b"}, operator: MATCH})
+
+					So(record2.metaTags[0], ShouldResemble, kv{key: "metaTag1", value: "value1"})
+					So(record2.queries[0], ShouldResemble, expression{kv: kv{key: "tag1", value: "c"}, operator: MATCH})
+					So(record2.queries[1], ShouldResemble, expression{kv: kv{key: "tag2", value: "d"}, operator: MATCH})
 				})
 			})
 		})
 	})
 }
 
+// we mock the hashing algorithm implementation because we want to be able to
+// test a hash collision
 type mockHash struct {
 	returnValues []uint32
 	position     int
@@ -177,66 +185,27 @@ func (m *mockHash) BlockSize() (n int) {
 	return
 }
 
-func getMockHash() hash.Hash32 {
-	return &mockHash{
-		returnValues: []uint32{1}, // keep returning 1
-	}
-}
-
+// We use a hash collision window of 3, so up to 3 hash collisions are allowed per hash value
+// When more than 3 hash collisions are encountered for one hash value, new records are rejected
 func TestHashCollisionsOnInsert(t *testing.T) {
 	originalHash := queryHash
 	defer func() { queryHash = originalHash }()
 
-	queryHash = getMockHash
-
-	metaTags1 := []string{"metaTag1=value1"}
-	tagQueries1 := []string{"metricTag1=value1"}
-	metaTags2 := []string{"metaTag2=value2"}
-	tagQueries2 := []string{"metricTag2=value2"}
-	metaTags3 := []string{"metaTag3=value3"}
-	tagQueries3 := []string{"metricTag3=value3"}
-	metaTags4 := []string{"metaTag4=value4"}
-	tagQueries4 := []string{"metricTag4=value4"}
-	metaTagsUpdate := []string{"metaTag3=value4"}
-	tagQueriesUpdate := []string{"metricTag3=value3"}
+	queryHash = func() hash.Hash32 {
+		return &mockHash{
+			returnValues: []uint32{1}, // keep returning 1
+		}
+	}
 
 	Convey("When adding 3 meta records with the same hash", t, func() {
 		metaTagRecords := make(metaTagRecords)
-
-		hash, record, oldHash, oldRecord, err := metaTagRecords.upsert(metaTags1, tagQueries1)
-		So(hash, ShouldEqual, 1)
-		So(record.metaTags[0].key, ShouldEqual, "metaTag1")
-		So(record.metaTags[0].value, ShouldEqual, "value1")
-		So(record.queries[0].getKey(), ShouldEqual, "metricTag1")
-		So(record.queries[0].getValue(), ShouldEqual, "value1")
-		So(oldHash, ShouldBeZeroValue)
-		So(oldRecord, ShouldBeNil)
-		So(err, ShouldBeNil)
-
-		hash, record, oldHash, oldRecord, err = metaTagRecords.upsert(metaTags2, tagQueries2)
-		So(hash, ShouldEqual, 2)
-		So(record.metaTags[0].key, ShouldEqual, "metaTag2")
-		So(record.metaTags[0].value, ShouldEqual, "value2")
-		So(record.queries[0].getKey(), ShouldEqual, "metricTag2")
-		So(record.queries[0].getValue(), ShouldEqual, "value2")
-		So(oldHash, ShouldBeZeroValue)
-		So(oldRecord, ShouldBeNil)
-		So(err, ShouldBeNil)
-
-		hash, record, oldHash, oldRecord, err = metaTagRecords.upsert(metaTags3, tagQueries3)
-		So(hash, ShouldEqual, 3)
-		So(record.metaTags[0].key, ShouldEqual, "metaTag3")
-		So(record.metaTags[0].value, ShouldEqual, "value3")
-		So(record.queries[0].getKey(), ShouldEqual, "metricTag3")
-		So(record.queries[0].getValue(), ShouldEqual, "value3")
-		So(oldHash, ShouldBeZeroValue)
-		So(oldRecord, ShouldBeNil)
-		So(err, ShouldBeNil)
-
+		metaTagRecords.upsert([]string{"metaTag1=value1"}, []string{"metricTag1=value1"})
+		metaTagRecords.upsert([]string{"metaTag2=value2"}, []string{"metricTag2=value2"})
+		metaTagRecords.upsert([]string{"metaTag3=value3"}, []string{"metricTag3=value3"})
 		So(len(metaTagRecords), ShouldEqual, 3)
 
-		Convey("When adding a 4th record with the same hash", func() {
-			hash, record, oldHash, oldRecord, err := metaTagRecords.upsert(metaTags4, tagQueries4)
+		Convey("When adding a 4th record with the same hash but different queries", func() {
+			hash, record, oldHash, oldRecord, err := metaTagRecords.upsert([]string{"metaTag4=value4"}, []string{"metricTag4=value4"})
 			So(err, ShouldNotBeNil)
 			So(hash, ShouldBeZeroValue)
 			So(record, ShouldBeNil)
@@ -244,39 +213,26 @@ func TestHashCollisionsOnInsert(t *testing.T) {
 			So(oldRecord, ShouldBeNil)
 		})
 
-		Convey("When updating the third record", func() {
-			hash, record, oldHash, oldRecord, err := metaTagRecords.upsert(metaTagsUpdate, tagQueriesUpdate)
+		Convey("When updating the third record with the same hash and equal queries", func() {
+			hash, record, oldHash, oldRecord, err := metaTagRecords.upsert([]string{"metaTag3=value4"}, []string{"metricTag3=value3"})
 			So(err, ShouldBeNil)
 			So(hash, ShouldEqual, 3)
-			So(record.metaTags[0].key, ShouldEqual, "metaTag3")
-			So(record.metaTags[0].value, ShouldEqual, "value4")
-			So(record.queries[0].getKey(), ShouldEqual, "metricTag3")
-			So(record.queries[0].getValue(), ShouldEqual, "value3")
+			So(record.metaTags[0], ShouldResemble, kv{key: "metaTag3", value: "value4"})
+			So(record.queries[0], ShouldResemble, expression{kv: kv{key: "metricTag3", value: "value3"}, operator: EQUAL})
 			So(oldHash, ShouldEqual, 3)
-			So(oldRecord.metaTags[0].key, ShouldEqual, "metaTag3")
-			So(oldRecord.metaTags[0].value, ShouldEqual, "value3")
-			So(oldRecord.queries[0].getKey(), ShouldEqual, "metricTag3")
-			So(oldRecord.queries[0].getValue(), ShouldEqual, "value3")
+			So(oldRecord.metaTags[0], ShouldResemble, kv{key: "metaTag3", value: "value3"})
+			So(oldRecord.queries[0], ShouldResemble, expression{kv: kv{key: "metricTag3", value: "value3"}, operator: EQUAL})
 		})
 	})
 }
 
 func TestDeletingMetaRecord(t *testing.T) {
-	metaTags1 := []string{"metaTag1=value1"}
-	tagQueries1 := []string{"metricTag1=value1"}
-	metaTags2 := []string{"metaTag2=value2"}
-	tagQueries2 := []string{"metricTag2=value2"}
-	metaTagsDelete := []string{}
-	tagQueriesDelete := []string{"metricTag2=value2"}
-
 	Convey("When adding 2 meta records", t, func() {
 		metaTagRecords := make(metaTagRecords)
 
-		hash, record, oldHash, oldRecord, err := metaTagRecords.upsert(metaTags1, tagQueries1)
-		So(record.metaTags[0].key, ShouldEqual, "metaTag1")
-		So(record.metaTags[0].value, ShouldEqual, "value1")
-		So(record.queries[0].getKey(), ShouldEqual, "metricTag1")
-		So(record.queries[0].getValue(), ShouldEqual, "value1")
+		hash, record, oldHash, oldRecord, err := metaTagRecords.upsert([]string{"metaTag1=value1"}, []string{"metricTag1=value1"})
+		So(record.metaTags[0], ShouldResemble, kv{key: "metaTag1", value: "value1"})
+		So(record.queries[0], ShouldResemble, expression{kv: kv{key: "metricTag1", value: "value1"}, operator: EQUAL})
 		So(oldHash, ShouldBeZeroValue)
 		So(oldRecord, ShouldBeNil)
 		So(err, ShouldBeNil)
@@ -284,11 +240,9 @@ func TestDeletingMetaRecord(t *testing.T) {
 		_, ok := metaTagRecords[hash]
 		So(ok, ShouldBeTrue)
 
-		hash, record, oldHash, oldRecord, err = metaTagRecords.upsert(metaTags2, tagQueries2)
-		So(record.metaTags[0].key, ShouldEqual, "metaTag2")
-		So(record.metaTags[0].value, ShouldEqual, "value2")
-		So(record.queries[0].getKey(), ShouldEqual, "metricTag2")
-		So(record.queries[0].getValue(), ShouldEqual, "value2")
+		hash, record, oldHash, oldRecord, err = metaTagRecords.upsert([]string{"metaTag2=value2"}, []string{"metricTag2=value2"})
+		So(record.metaTags[0], ShouldResemble, kv{key: "metaTag2", value: "value2"})
+		So(record.queries[0], ShouldResemble, expression{kv: kv{key: "metricTag2", value: "value2"}, operator: EQUAL})
 		So(oldHash, ShouldBeZeroValue)
 		So(oldRecord, ShouldBeNil)
 		So(err, ShouldBeNil)
@@ -299,16 +253,13 @@ func TestDeletingMetaRecord(t *testing.T) {
 		hashOfRecord2 := hash
 
 		Convey("then we delete one record again", func() {
-			hash, record, oldHash, oldRecord, err = metaTagRecords.upsert(metaTagsDelete, tagQueriesDelete)
+			hash, record, oldHash, oldRecord, err = metaTagRecords.upsert([]string{}, []string{"metricTag2=value2"})
 			So(err, ShouldBeNil)
 			So(len(record.metaTags), ShouldEqual, 0)
-			So(record.queries[0].getKey(), ShouldEqual, "metricTag2")
-			So(record.queries[0].getValue(), ShouldEqual, "value2")
+			So(record.queries[0], ShouldResemble, expression{kv: kv{key: "metricTag2", value: "value2"}, operator: EQUAL})
 			So(oldHash, ShouldEqual, hashOfRecord2)
-			So(oldRecord.metaTags[0].key, ShouldEqual, "metaTag2")
-			So(oldRecord.metaTags[0].value, ShouldEqual, "value2")
-			So(oldRecord.queries[0].getKey(), ShouldEqual, "metricTag2")
-			So(oldRecord.queries[0].getValue(), ShouldEqual, "value2")
+			So(oldRecord.metaTags[0], ShouldResemble, kv{key: "metaTag2", value: "value2"})
+			So(oldRecord.queries[0], ShouldResemble, expression{kv: kv{key: "metricTag2", value: "value2"}, operator: EQUAL})
 			So(len(metaTagRecords), ShouldEqual, 1)
 			_, ok = metaTagRecords[hash]
 			So(ok, ShouldBeFalse)

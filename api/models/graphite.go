@@ -151,11 +151,6 @@ type GraphiteFind struct {
 	Jsonp  string `json:"jsonp" form:"jsonp"`
 }
 
-type MetaTagRecord struct {
-	MetaTags   []string
-	TagQueries []string
-}
-
 type MetricsDelete struct {
 	Query string `json:"query" form:"query" binding:"Required"`
 }

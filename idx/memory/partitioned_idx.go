@@ -544,3 +544,11 @@ func (p *PartitionedMemoryIdx) idsByTagQuery(orgId uint32, query TagQuery) IdSet
 	}
 	return response
 }
+
+func (m *PartitionedMemoryIdx) MetaTagRecordList(orgId uint32) []idx.MetaTagRecord {
+	return nil
+}
+
+func (m *PartitionedMemoryIdx) MetaTagRecordUpsert(orgId uint32, rawRecord idx.MetaTagRecord) (idx.MetaTagRecord, bool, error) {
+	return idx.MetaTagRecord{}, false, nil
+}

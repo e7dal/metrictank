@@ -72,8 +72,9 @@ func (s *Server) RegisterRoutes() {
 	r.Combo("/functions/:func(.+)", withOrg).Get(s.graphiteFunctions).Post(s.graphiteFunctions)
 
 	// Meta Tags
-	r.Post("/metaTags/add", withOrg, ready, bind(models.MetaTagRecord{}), s.metaTagRecordUpsert)
+	r.Post("/metaTags/upsert", withOrg, ready, bind(models.MetaTagRecordUpsert{}), s.metaTagRecordUpsert)
 	r.Get("/metaTags", withOrg, ready, s.getMetaTagRecord)
+	r.Post("/index/metaTags/upsert", ready, bind(models.IndexMetaTagRecordUpsert{}), s.indexMetaTagRecordUpsert)
 
 	// Prometheus endpoints
 	r.Combo("/prometheus/api/v1/query_range", cBody, withOrg, ready, form(models.PrometheusRangeQuery{})).Get(s.prometheusQueryRange).Post(s.prometheusQueryRange)

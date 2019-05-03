@@ -9,8 +9,8 @@ import (
 	"github.com/tinylib/msgp/msgp"
 )
 
-func TestMarshalUnmarshalGraphiteTagDelSeries(t *testing.T) {
-	v := GraphiteTagDelSeries{}
+func TestMarshalUnmarshalIndexMetaTagRecordUpsert(t *testing.T) {
+	v := IndexMetaTagRecordUpsert{}
 	bts, err := v.MarshalMsg(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -32,8 +32,8 @@ func TestMarshalUnmarshalGraphiteTagDelSeries(t *testing.T) {
 	}
 }
 
-func BenchmarkMarshalMsgGraphiteTagDelSeries(b *testing.B) {
-	v := GraphiteTagDelSeries{}
+func BenchmarkMarshalMsgIndexMetaTagRecordUpsert(b *testing.B) {
+	v := IndexMetaTagRecordUpsert{}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -41,8 +41,8 @@ func BenchmarkMarshalMsgGraphiteTagDelSeries(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendMsgGraphiteTagDelSeries(b *testing.B) {
-	v := GraphiteTagDelSeries{}
+func BenchmarkAppendMsgIndexMetaTagRecordUpsert(b *testing.B) {
+	v := IndexMetaTagRecordUpsert{}
 	bts := make([]byte, 0, v.Msgsize())
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
@@ -53,8 +53,8 @@ func BenchmarkAppendMsgGraphiteTagDelSeries(b *testing.B) {
 	}
 }
 
-func BenchmarkUnmarshalGraphiteTagDelSeries(b *testing.B) {
-	v := GraphiteTagDelSeries{}
+func BenchmarkUnmarshalIndexMetaTagRecordUpsert(b *testing.B) {
+	v := IndexMetaTagRecordUpsert{}
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
@@ -67,8 +67,8 @@ func BenchmarkUnmarshalGraphiteTagDelSeries(b *testing.B) {
 	}
 }
 
-func TestEncodeDecodeGraphiteTagDelSeries(t *testing.T) {
-	v := GraphiteTagDelSeries{}
+func TestEncodeDecodeIndexMetaTagRecordUpsert(t *testing.T) {
+	v := IndexMetaTagRecordUpsert{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 
@@ -77,7 +77,7 @@ func TestEncodeDecodeGraphiteTagDelSeries(t *testing.T) {
 		t.Logf("WARNING: Msgsize() for %v is inaccurate", v)
 	}
 
-	vn := GraphiteTagDelSeries{}
+	vn := IndexMetaTagRecordUpsert{}
 	err := msgp.Decode(&buf, &vn)
 	if err != nil {
 		t.Error(err)
@@ -91,8 +91,8 @@ func TestEncodeDecodeGraphiteTagDelSeries(t *testing.T) {
 	}
 }
 
-func BenchmarkEncodeGraphiteTagDelSeries(b *testing.B) {
-	v := GraphiteTagDelSeries{}
+func BenchmarkEncodeIndexMetaTagRecordUpsert(b *testing.B) {
+	v := IndexMetaTagRecordUpsert{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -105,8 +105,8 @@ func BenchmarkEncodeGraphiteTagDelSeries(b *testing.B) {
 	en.Flush()
 }
 
-func BenchmarkDecodeGraphiteTagDelSeries(b *testing.B) {
-	v := GraphiteTagDelSeries{}
+func BenchmarkDecodeIndexMetaTagRecordUpsert(b *testing.B) {
+	v := IndexMetaTagRecordUpsert{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -122,8 +122,8 @@ func BenchmarkDecodeGraphiteTagDelSeries(b *testing.B) {
 	}
 }
 
-func TestMarshalUnmarshalGraphiteTagDelSeriesResp(t *testing.T) {
-	v := GraphiteTagDelSeriesResp{}
+func TestMarshalUnmarshalMetaTagRecordUpsert(t *testing.T) {
+	v := MetaTagRecordUpsert{}
 	bts, err := v.MarshalMsg(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -145,8 +145,8 @@ func TestMarshalUnmarshalGraphiteTagDelSeriesResp(t *testing.T) {
 	}
 }
 
-func BenchmarkMarshalMsgGraphiteTagDelSeriesResp(b *testing.B) {
-	v := GraphiteTagDelSeriesResp{}
+func BenchmarkMarshalMsgMetaTagRecordUpsert(b *testing.B) {
+	v := MetaTagRecordUpsert{}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -154,8 +154,8 @@ func BenchmarkMarshalMsgGraphiteTagDelSeriesResp(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendMsgGraphiteTagDelSeriesResp(b *testing.B) {
-	v := GraphiteTagDelSeriesResp{}
+func BenchmarkAppendMsgMetaTagRecordUpsert(b *testing.B) {
+	v := MetaTagRecordUpsert{}
 	bts := make([]byte, 0, v.Msgsize())
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
@@ -166,8 +166,8 @@ func BenchmarkAppendMsgGraphiteTagDelSeriesResp(b *testing.B) {
 	}
 }
 
-func BenchmarkUnmarshalGraphiteTagDelSeriesResp(b *testing.B) {
-	v := GraphiteTagDelSeriesResp{}
+func BenchmarkUnmarshalMetaTagRecordUpsert(b *testing.B) {
+	v := MetaTagRecordUpsert{}
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
@@ -180,8 +180,8 @@ func BenchmarkUnmarshalGraphiteTagDelSeriesResp(b *testing.B) {
 	}
 }
 
-func TestEncodeDecodeGraphiteTagDelSeriesResp(t *testing.T) {
-	v := GraphiteTagDelSeriesResp{}
+func TestEncodeDecodeMetaTagRecordUpsert(t *testing.T) {
+	v := MetaTagRecordUpsert{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 
@@ -190,7 +190,7 @@ func TestEncodeDecodeGraphiteTagDelSeriesResp(t *testing.T) {
 		t.Logf("WARNING: Msgsize() for %v is inaccurate", v)
 	}
 
-	vn := GraphiteTagDelSeriesResp{}
+	vn := MetaTagRecordUpsert{}
 	err := msgp.Decode(&buf, &vn)
 	if err != nil {
 		t.Error(err)
@@ -204,8 +204,8 @@ func TestEncodeDecodeGraphiteTagDelSeriesResp(t *testing.T) {
 	}
 }
 
-func BenchmarkEncodeGraphiteTagDelSeriesResp(b *testing.B) {
-	v := GraphiteTagDelSeriesResp{}
+func BenchmarkEncodeMetaTagRecordUpsert(b *testing.B) {
+	v := MetaTagRecordUpsert{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -218,8 +218,8 @@ func BenchmarkEncodeGraphiteTagDelSeriesResp(b *testing.B) {
 	en.Flush()
 }
 
-func BenchmarkDecodeGraphiteTagDelSeriesResp(b *testing.B) {
-	v := GraphiteTagDelSeriesResp{}
+func BenchmarkDecodeMetaTagRecordUpsert(b *testing.B) {
+	v := MetaTagRecordUpsert{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -235,8 +235,8 @@ func BenchmarkDecodeGraphiteTagDelSeriesResp(b *testing.B) {
 	}
 }
 
-func TestMarshalUnmarshalSeriesPickle(t *testing.T) {
-	v := SeriesPickle{}
+func TestMarshalUnmarshalMetaTagRecordUpsertResult(t *testing.T) {
+	v := MetaTagRecordUpsertResult{}
 	bts, err := v.MarshalMsg(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -258,8 +258,8 @@ func TestMarshalUnmarshalSeriesPickle(t *testing.T) {
 	}
 }
 
-func BenchmarkMarshalMsgSeriesPickle(b *testing.B) {
-	v := SeriesPickle{}
+func BenchmarkMarshalMsgMetaTagRecordUpsertResult(b *testing.B) {
+	v := MetaTagRecordUpsertResult{}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -267,8 +267,8 @@ func BenchmarkMarshalMsgSeriesPickle(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendMsgSeriesPickle(b *testing.B) {
-	v := SeriesPickle{}
+func BenchmarkAppendMsgMetaTagRecordUpsertResult(b *testing.B) {
+	v := MetaTagRecordUpsertResult{}
 	bts := make([]byte, 0, v.Msgsize())
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
@@ -279,8 +279,8 @@ func BenchmarkAppendMsgSeriesPickle(b *testing.B) {
 	}
 }
 
-func BenchmarkUnmarshalSeriesPickle(b *testing.B) {
-	v := SeriesPickle{}
+func BenchmarkUnmarshalMetaTagRecordUpsertResult(b *testing.B) {
+	v := MetaTagRecordUpsertResult{}
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
@@ -293,8 +293,8 @@ func BenchmarkUnmarshalSeriesPickle(b *testing.B) {
 	}
 }
 
-func TestEncodeDecodeSeriesPickle(t *testing.T) {
-	v := SeriesPickle{}
+func TestEncodeDecodeMetaTagRecordUpsertResult(t *testing.T) {
+	v := MetaTagRecordUpsertResult{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 
@@ -303,7 +303,7 @@ func TestEncodeDecodeSeriesPickle(t *testing.T) {
 		t.Logf("WARNING: Msgsize() for %v is inaccurate", v)
 	}
 
-	vn := SeriesPickle{}
+	vn := MetaTagRecordUpsertResult{}
 	err := msgp.Decode(&buf, &vn)
 	if err != nil {
 		t.Error(err)
@@ -317,8 +317,8 @@ func TestEncodeDecodeSeriesPickle(t *testing.T) {
 	}
 }
 
-func BenchmarkEncodeSeriesPickle(b *testing.B) {
-	v := SeriesPickle{}
+func BenchmarkEncodeMetaTagRecordUpsertResult(b *testing.B) {
+	v := MetaTagRecordUpsertResult{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -331,8 +331,8 @@ func BenchmarkEncodeSeriesPickle(b *testing.B) {
 	en.Flush()
 }
 
-func BenchmarkDecodeSeriesPickle(b *testing.B) {
-	v := SeriesPickle{}
+func BenchmarkDecodeMetaTagRecordUpsertResult(b *testing.B) {
+	v := MetaTagRecordUpsertResult{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -348,8 +348,8 @@ func BenchmarkDecodeSeriesPickle(b *testing.B) {
 	}
 }
 
-func TestMarshalUnmarshalSeriesPickleItem(t *testing.T) {
-	v := SeriesPickleItem{}
+func TestMarshalUnmarshalMetaTagRecordUpsertResultByNode(t *testing.T) {
+	v := MetaTagRecordUpsertResultByNode{}
 	bts, err := v.MarshalMsg(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -371,8 +371,8 @@ func TestMarshalUnmarshalSeriesPickleItem(t *testing.T) {
 	}
 }
 
-func BenchmarkMarshalMsgSeriesPickleItem(b *testing.B) {
-	v := SeriesPickleItem{}
+func BenchmarkMarshalMsgMetaTagRecordUpsertResultByNode(b *testing.B) {
+	v := MetaTagRecordUpsertResultByNode{}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -380,8 +380,8 @@ func BenchmarkMarshalMsgSeriesPickleItem(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendMsgSeriesPickleItem(b *testing.B) {
-	v := SeriesPickleItem{}
+func BenchmarkAppendMsgMetaTagRecordUpsertResultByNode(b *testing.B) {
+	v := MetaTagRecordUpsertResultByNode{}
 	bts := make([]byte, 0, v.Msgsize())
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
@@ -392,8 +392,8 @@ func BenchmarkAppendMsgSeriesPickleItem(b *testing.B) {
 	}
 }
 
-func BenchmarkUnmarshalSeriesPickleItem(b *testing.B) {
-	v := SeriesPickleItem{}
+func BenchmarkUnmarshalMetaTagRecordUpsertResultByNode(b *testing.B) {
+	v := MetaTagRecordUpsertResultByNode{}
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
@@ -406,8 +406,8 @@ func BenchmarkUnmarshalSeriesPickleItem(b *testing.B) {
 	}
 }
 
-func TestEncodeDecodeSeriesPickleItem(t *testing.T) {
-	v := SeriesPickleItem{}
+func TestEncodeDecodeMetaTagRecordUpsertResultByNode(t *testing.T) {
+	v := MetaTagRecordUpsertResultByNode{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 
@@ -416,7 +416,7 @@ func TestEncodeDecodeSeriesPickleItem(t *testing.T) {
 		t.Logf("WARNING: Msgsize() for %v is inaccurate", v)
 	}
 
-	vn := SeriesPickleItem{}
+	vn := MetaTagRecordUpsertResultByNode{}
 	err := msgp.Decode(&buf, &vn)
 	if err != nil {
 		t.Error(err)
@@ -430,8 +430,8 @@ func TestEncodeDecodeSeriesPickleItem(t *testing.T) {
 	}
 }
 
-func BenchmarkEncodeSeriesPickleItem(b *testing.B) {
-	v := SeriesPickleItem{}
+func BenchmarkEncodeMetaTagRecordUpsertResultByNode(b *testing.B) {
+	v := MetaTagRecordUpsertResultByNode{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -444,8 +444,8 @@ func BenchmarkEncodeSeriesPickleItem(b *testing.B) {
 	en.Flush()
 }
 
-func BenchmarkDecodeSeriesPickleItem(b *testing.B) {
-	v := SeriesPickleItem{}
+func BenchmarkDecodeMetaTagRecordUpsertResultByNode(b *testing.B) {
+	v := MetaTagRecordUpsertResultByNode{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))

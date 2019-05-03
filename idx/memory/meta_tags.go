@@ -131,21 +131,22 @@ func (m *metaTagRecord) hashQueries() uint32 {
 	return h.Sum32()
 }
 
-// sortQueries sorts all the queries first by key and then by value
+// sortQueries sorts all the queries first by key, then by value, then by
+// operator. The order doesn't matter, it only needs to be consistent
 func (m *metaTagRecord) sortQueries() {
 	sort.Slice(m.queries, func(i, j int) bool {
-		if m.queries[i].getKey() == m.queries[j].getKey() {
-			if m.queries[i].getValue() == m.queries[j].getValue() {
-				return m.queries[i].getOperator() < m.queries[j].getOperator()
+		if m.queries[i].key == m.queries[j].key {
+			if m.queries[i].value == m.queries[j].value {
+				return m.queries[i].operator < m.queries[j].operator
 			}
-			return m.queries[i].getValue() < m.queries[j].getValue()
+			return m.queries[i].value < m.queries[j].value
 		}
-		return m.queries[i].getKey() < m.queries[j].getKey()
+		return m.queries[i].key < m.queries[j].key
 	})
 }
 
 // matchesQueries compares another tag record's queries to this
-// one's queries. Returns true if they are equal, otherwise false
+// one's queries. Returns true if they are equal, otherwise false.
 // It is assumed that all the queries are already sorted
 func (m *metaTagRecord) matchesQueries(other metaTagRecord) bool {
 	if len(m.queries) != len(other.queries) {
@@ -156,15 +157,15 @@ func (m *metaTagRecord) matchesQueries(other metaTagRecord) bool {
 	other.sortQueries()
 
 	for id, query := range m.queries {
-		if query.getKey() != other.queries[id].getKey() {
+		if query.key != other.queries[id].key {
 			return false
 		}
 
-		if query.getOperator() != other.queries[id].getOperator() {
+		if query.operator != other.queries[id].operator {
 			return false
 		}
 
-		if query.getValue() != other.queries[id].getValue() {
+		if query.value != other.queries[id].value {
 			return false
 		}
 	}

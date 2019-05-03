@@ -367,10 +367,21 @@ func (m *UnpartitionedMemoryIdx) UpdateArchive(archive idx.Archive) {
 	*(m.defById[archive.Id]) = archive
 }
 
-func (m *MemoryIdx) MetaTagRecordUpsert(orgId uint32, rawRecord idx.MetaTagRecord) (*idx.MetaTagRecord, error) {
+// MetaTagRecordUpsert inserts or updates a meta record, depending on whether
+// it already exists or is new. The identity of a record is determined by its
+// queries, if the set of queries in the given record already exists in another
+// record, then the existing record will be updated, otherwise a new one gets
+// created.
+// The return values are:
+// 1) The relevant meta record as it is after this operation
+// 2) A bool that is true if the record has been created, or false if updated
+// 3) An error which is nil if no error has occurred
+func (m *UnpartitionedMemoryIdx) MetaTagRecordUpsert(orgId uint32, rawRecord idx.MetaTagRecord) (idx.MetaTagRecord, bool, error) {
+	res := idx.MetaTagRecord{}
+
 	if !TagSupport {
 		log.Warn("memory-idx: received tag query, but tag support is disabled")
-		return nil, nil
+		return res, false, fmt.Errorf("Tag support is disabled")
 	}
 
 	var mtr metaTagRecords
@@ -392,8 +403,13 @@ func (m *MemoryIdx) MetaTagRecordUpsert(orgId uint32, rawRecord idx.MetaTagRecor
 
 	hash, record, oldHash, oldRecord, err := mtr.upsert(rawRecord.MetaTags, rawRecord.Queries)
 	if err != nil {
-		return nil, err
+		return res, false, err
 	}
+
+	builder := strings.Builder{}
+	res.ID = hash
+	res.MetaTags = record.metaTagStrings(&builder)
+	res.Queries = record.queryStrings(&builder)
 
 	// if this upsert has updated a previously existing record, then we remove its entries
 	// from the metaTagIndex before inserting the new ones
@@ -406,24 +422,17 @@ func (m *MemoryIdx) MetaTagRecordUpsert(orgId uint32, rawRecord idx.MetaTagRecor
 			mti.insertRecord(keyValue, hash)
 		}
 
-		// if a record has been updated then we want return information about the
-		// record that has been updated in order to respond with what has changed
-		builder := strings.Builder{}
-		return &idx.MetaTagRecord{
-			ID:       oldHash,
-			MetaTags: oldRecord.metaTagStrings(&builder),
-			Queries:  oldRecord.queryStrings(&builder),
-		}, nil
+		return res, false, nil
 	} else {
 		for _, keyValue := range record.metaTags {
 			mti.insertRecord(keyValue, hash)
 		}
 
-		return nil, nil
+		return res, true, nil
 	}
 }
 
-func (m *MemoryIdx) MetaTagRecordList(orgId uint32) []idx.MetaTagRecord {
+func (m *UnpartitionedMemoryIdx) MetaTagRecordList(orgId uint32) []idx.MetaTagRecord {
 	builder := strings.Builder{}
 	res := make([]idx.MetaTagRecord, 0, len(m.metaTagRecords))
 

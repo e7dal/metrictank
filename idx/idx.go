@@ -132,15 +132,16 @@ type MetricIndex interface {
 	// DefById index.
 	DeleteTagged(orgId uint32, paths []string) ([]Archive, error)
 
-	// MetaTagRecordUpsert takes the definition of a meta tag record rule, parses and
-	// applies it.
-	// If the given meta tag record applies to a combination of tag queries for which
-	// there already is a rule, then it updates that existing rule instead of adding
-	// a new one. In this case the first returned value is a pointer to the old rule
-	// before the update, otherwise that value is nil.
-	// If there were any errors during this process it returns an error
-	// message as the second returned value.
-	MetaTagRecordUpsert(orgId uint32, record MetaTagRecord) (*MetaTagRecord, error)
+	// MetaTagRecordUpsert inserts or updates a meta record, depending on whether
+	// it already exists or is new. The identity of a record is determined by its
+	// queries. If the set of queries in the given record already exists in another
+	// record, then the existing record will be updated, otherwise a new one gets
+	// created.
+	// The return values are:
+	// 1) The relevant meta record as it is after this operation
+	// 2) A bool that is true if the record has been created, or false if updated
+	// 3) An error which is nil if no error has occurred
+	MetaTagRecordUpsert(orgId uint32, record MetaTagRecord) (MetaTagRecord, bool, error)
 
 	// MetaTagRecordList takes an org id and returns the list of all meta tag records
 	// of that given org.
